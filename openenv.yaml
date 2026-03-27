@@ -1,0 +1,84 @@
+# OpenEnv Environment Manifest
+# ITR Fraud Detection Environment
+
+name: itr_fraud_detection
+version: "1.0.0"
+description: >
+  An AI agent environment for detecting fraud in Indian Income Tax Returns (ITR).
+  The agent reviews synthetic ITR filings, investigates fields, cross-references data,
+  requests supporting documents, flags anomalies, and renders a final verdict.
+
+author: "Hackathon Team"
+license: "MIT"
+
+# Environment metadata
+environment:
+  type: "real_world_simulation"
+  domain: "tax_audit"
+  category: "fraud_detection"
+
+# Server configuration
+server:
+  entrypoint: "server/app.py"
+  port: 8000
+  framework: "fastapi"
+
+# Task definitions
+tasks:
+  - id: "easy"
+    name: "Obvious Red Flags"
+    description: "Detect 1-2 blatant anomalies: income mismatch and over-limit deductions."
+    max_steps: 10
+    difficulty: "easy"
+
+  - id: "medium"
+    name: "The Subtle Cheat"
+    description: "Find 2-3 subtle inconsistencies: phantom HRA, penny stock LTCG, tax computation errors."
+    max_steps: 15
+    difficulty: "medium"
+
+  - id: "hard"
+    name: "The Elaborate Scheme"
+    description: "Uncover multi-layered fraud: shell companies, income shifting, suspicious transactions."
+    max_steps: 25
+    difficulty: "hard"
+
+# Action space
+action_space:
+  type: "discrete"
+  actions:
+    - investigate_field: "Drill into a specific field for detailed data"
+    - cross_reference: "Cross-check two data points for discrepancies"
+    - request_document: "Request a supporting document for verification"
+    - flag_anomaly: "Flag a specific field as anomalous with reason and severity"
+    - render_verdict: "Submit final verdict: legitimate, suspicious, or fraudulent"
+
+# Observation space
+observation_space:
+  type: "structured"
+  fields:
+    - itr_summary: "Complete ITR filing data (income, deductions, TDS, etc.)"
+    - last_action_result: "Result of the most recent action"
+    - investigation_results: "List of investigation findings"
+    - document_results: "List of requested document results"
+    - flagged_anomalies: "List of anomalies flagged by the agent"
+    - step_number: "Current step in the episode"
+    - max_steps: "Maximum steps allowed"
+    - task_description: "Description of the current task"
+
+# Reward specification
+reward:
+  type: "dense"
+  range: [-1.0, 1.0]
+  components:
+    - anomaly_reward: "+0.10 per correct anomaly flagged"
+    - investigation_reward: "+0.05/+0.08 for useful investigations/cross-references"
+    - verdict_reward: "+0.30 for correct verdict"
+    - efficiency_bonus: "Up to +0.05 for efficient investigation"
+    - penalty: "-0.02 to -0.10 for false flags, redundant actions, timeouts"
+
+# Deployment
+deployment:
+  platform: "huggingface_spaces"
+  dockerfile: "server/Dockerfile"
+  sdk: "docker"
