@@ -1,3 +1,12 @@
+---
+title: ITR Fraud Detection
+emoji: 🏦
+colorFrom: red
+colorTo: black
+sdk: docker
+pinned: false
+---
+
 # ITR Fraud Detection Environment 🏦🔍
 
 An **OpenEnv-compliant** environment where AI agents learn to detect fraud in **Indian Income Tax Returns (ITR)**. Built for the Meta PyTorch × Hugging Face OpenEnv Hackathon.
