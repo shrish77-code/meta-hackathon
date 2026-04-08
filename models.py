@@ -9,7 +9,7 @@ import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field  # type: ignore
 
 
 # ─── Enums ───────────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ class TaxpayerProfile(BaseModel):
 
 class ITRFiling(BaseModel):
     """Complete ITR filing data that the agent will review."""
-    filing_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    filing_id: str = Field(default_factory=lambda: str(uuid.uuid4())[0:8])
     taxpayer: TaxpayerProfile
     income: IncomeBreakdown
     deductions: Deductions
@@ -183,7 +183,7 @@ class ITRObservation(BaseModel):
     step_number: int = Field(default=0)
     max_steps: int = Field(default=10)
     available_actions: List[str] = Field(
-        default_factory=lambda: [a.value for a in ActionType]
+        default_factory=lambda: [a.value for a in ActionType]  # type: ignore
     )
     task_description: str = Field(default="", description="Description of the current task")
 

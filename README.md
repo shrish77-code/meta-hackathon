@@ -17,6 +17,23 @@ This is a **real-world task** — not a game. Tax auditors perform these exact s
 
 ---
 
+## 🏛️ Project Relevance & The AI Auditor
+
+### Why This Idea Matters
+India's tax collection system is transitioning to a "Faceless Assessment" model. Manually auditing millions of ITR filings is physically impossible and prone to human error or bias. Our environment provides a training ground for **AI Auditors** that can:
+- **Scalability**: Process thousands of returns per minute.
+- **Consistency**: Apply the same audit logic to every citizen fairly.
+- **Complexity**: Identify multi-layered "layering" techniques used in money laundering and tax evasion.
+
+### Role of Large Language Models (LLMs)
+Modern LLMs (like GPT-4o, Gemini 1.5 Pro) are uniquely suited for this task because:
+- **Tax Law Training**: These models have read thousands of pages of tax codes, case law, and IT Department circulars (Section 80C, 80D, HRA rules, etc.).
+- **Pattern Recognition**: They are excellent at spotting inconsistencies between text-heavy descriptions (standard business books) and numerical data.
+- **Reasoning**: Unlike traditional static rule-engines, an AI Agent can *decide* which document to ask for next based on previous findings, mimicking the curiosity of a human auditor.
+- **Explainability**: They don't just flag fraud; they explain *why* it's fraud in natural language, making them perfect assistants for human review.
+
+---
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -28,14 +45,16 @@ pip install -e .
 ### Run the Baseline Agent (No API Key Needed)
 
 ```bash
-python baseline.py --local
+python inference.py --local
 ```
 
-### Run with Google Gemini API
+### Run Inference Script Required by Hackathon
 
 ```bash
-export GEMINI_API_KEY="your-key-here"
-python baseline.py
+export HF_TOKEN="your-huggingface-or-openai-key-here"
+export API_BASE_URL="https://router.huggingface.co/v1" # (Optional: defaults to OpenAI)
+export MODEL_NAME="gpt-4o-mini" # (Optional: defaults to gpt-4o-mini)
+python inference.py
 ```
 
 ### Start the Server
@@ -156,7 +175,7 @@ curl http://localhost:8000/health
 ```
 ├── models.py              # Pydantic Action/Observation/State models
 ├── client.py              # HTTP client (ITRFraudEnv)
-├── baseline.py            # Baseline inference script
+├── inference.py           # Baseline inference script
 ├── openenv.yaml           # OpenEnv manifest
 ├── pyproject.toml         # Package configuration
 ├── tasks/

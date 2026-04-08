@@ -20,31 +20,34 @@ from typing import Any, Dict, List
 
 # Attempt to load from .env file if python-dotenv is installed
 try:
-    from dotenv import load_dotenv
+    from dotenv import load_dotenv  # type: ignore
     load_dotenv()
 except ImportError:
     pass
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from models import ActionType, ITRAction, DocumentType, Severity, VerdictType
-from server.itr_environment import ITREnvironment
+from models import ActionType, ITRAction, DocumentType, Severity, VerdictType  # type: ignore
+from server.itr_environment import ITREnvironment  # type: ignore
 
 
-def run_gemini_agent(env: ITREnvironment, task_id: str) -> Dict[str, Any]:
-    """Run Google Gemini-powered agent on a task."""
+def run_openai_agent(env: ITREnvironment, task_id: str) -> Dict[str, Any]:
+    """Run OpenAI-powered agent on a task."""
     try:
-        from google import genai
+        from openai import OpenAI
     except ImportError:
-        print("⚠️  google-genai package not installed. Run: pip install google-genai")
+        print("⚠️  openai package not installed. Run: pip install openai")
         return run_heuristic_agent(env, task_id)
 
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("HF_TOKEN", os.environ.get("OPENAI_API_KEY"))
+    api_base_url = os.environ.get("API_BASE_URL") 
+    model_name = os.environ.get("MODEL_NAME", "gpt-4o-mini")
+
     if not api_key:
-        print("⚠️  GEMINI_API_KEY not set. Falling back to heuristic agent.")
+        print("⚠️  HF_TOKEN / OPENAI_API_KEY not set. Falling back to heuristic agent.")
         return run_heuristic_agent(env, task_id)
 
-    client = genai.Client(api_key=api_key)
+    client = OpenAI(base_url=api_base_url, api_key=api_key)
     obs = env.reset(task_id=task_id)
 
     system_prompt = """You are an expert income tax auditor for the Indian Income Tax Department.
@@ -57,7 +60,7 @@ You MUST respond with a valid JSON action. Available action types:
 4. flag_anomaly - Flag a suspicious field. Params: anomaly_field, anomaly_reason, anomaly_severity (low/medium/high/critical)
 5. render_verdict - Final decision. Params: verdict (legitimate/suspicious/fraudulent), confidence (0-1), explanation
 
-Respond ONLY with a single JSON object, no extra text. Examples:
+Respond ONLY with JSON. Example:
 {"action_type": "investigate_field", "field_name": "income.salary"}
 {"action_type": "flag_anomaly", "anomaly_field": "deductions.section_80c", "anomaly_reason": "Exceeds 1.5L limit", "anomaly_severity": "high"}
 {"action_type": "render_verdict", "verdict": "fraudulent", "confidence": 0.9, "explanation": "Multiple anomalies found"}
@@ -78,47 +81,26 @@ Respond ONLY with a single JSON object, no extra text. Examples:
             "investigations": [r.model_dump() for r in obs.investigation_results[-3:]],
         }, indent=2, default=str)
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                {"role": "user", "parts": [{"text": system_prompt + "\n\nCurrent ITR data:\n" + user_msg}]},
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg},
             ],
-            config={
-                "temperature": 0.1,
-                "max_output_tokens": 1000,
-                "response_mime_type": "application/json",
-            },
+            temperature=0.1,
+            max_tokens=500,
         )
 
-        action_text = response.text.strip()
-        # Parse JSON from response — try multiple strategies
-        action_data = None
-        # Strategy 1: Direct parse (works when response_mime_type is set)
+        action_text = response.choices[0].message.content.strip()
+        # Parse JSON from response
         try:
+            if "```" in action_text:
+                action_text = action_text.split("```")[1]
+                if action_text.startswith("json"):
+                    action_text = action_text[4:]
             action_data = json.loads(action_text)
-        except (json.JSONDecodeError, TypeError):
-            pass
-        # Strategy 2: Extract from markdown code block
-        if action_data is None and "```" in action_text:
-            try:
-                block = action_text.split("```")[1]
-                if block.startswith("json"):
-                    block = block[4:]
-                action_data = json.loads(block.strip())
-            except (json.JSONDecodeError, TypeError, IndexError):
-                pass
-        # Strategy 3: Find first { ... } using simple scan
-        if action_data is None:
-            import re
-            match = re.search(r'\{[^{}]*\}', action_text, re.DOTALL)
-            if match:
-                try:
-                    action_data = json.loads(match.group())
-                except (json.JSONDecodeError, TypeError):
-                    pass
-        # Final fallback
-        if action_data is None:
-            print(f"\n[DEBUG] Could not parse JSON! Raw model output:\n{action_text}\n")
+        except json.JSONDecodeError:
+            # Fallback: render verdict if can't parse
             action_data = {
                 "action_type": "render_verdict",
                 "verdict": "suspicious",
@@ -132,6 +114,8 @@ Respond ONLY with a single JSON object, no extra text. Examples:
         obs = result.observation
         done = result.done
         total_reward += result.reward
+
+        print(f"[STEP] action={action.action_type.value} reward={result.reward:.4f}")
 
         steps.append({
             "step": obs.step_number,
@@ -228,7 +212,7 @@ def run_heuristic_agent(env: ITREnvironment, task_id: str) -> Dict[str, Any]:
             result = env.step(action)
             obs = result.observation
             done = result.done
-            total_reward += result.reward
+            total_reward += result.reward  # type: ignore
             steps.append({"action": f"flag_anomaly: {inv.finding[:50]}", "reward": result.reward})
             if done:
                 return _build_result(task_id, steps, total_reward, result)
@@ -246,7 +230,7 @@ def run_heuristic_agent(env: ITREnvironment, task_id: str) -> Dict[str, Any]:
                 result = env.step(action)
                 obs = result.observation
                 done = result.done
-                total_reward += result.reward
+                total_reward += result.reward  # type: ignore
                 steps.append({"action": f"flag_anomaly from doc: {disc[:40]}", "reward": result.reward})
                 if done:
                     return _build_result(task_id, steps, total_reward, result)
@@ -262,7 +246,7 @@ def run_heuristic_agent(env: ITREnvironment, task_id: str) -> Dict[str, Any]:
                 result = env.step(action)
                 obs = result.observation
                 done = result.done
-                total_reward += result.reward
+                total_reward += result.reward  # type: ignore
                 steps.append({"action": f"investigate {field}", "reward": result.reward})
 
                 if result.observation.investigation_results and result.observation.investigation_results[-1].suspicious and not done:
@@ -276,7 +260,7 @@ def run_heuristic_agent(env: ITREnvironment, task_id: str) -> Dict[str, Any]:
                     result = env.step(action)
                     obs = result.observation
                     done = result.done
-                    total_reward += result.reward
+                    total_reward += result.reward  # type: ignore
                     steps.append({"action": f"flag {field}", "reward": result.reward})
                     if done:
                         return _build_result(task_id, steps, total_reward, result)
@@ -292,8 +276,8 @@ def run_heuristic_agent(env: ITREnvironment, task_id: str) -> Dict[str, Any]:
                 result = env.step(action)
                 obs = result.observation
                 done = result.done
-                total_reward += result.reward
-                steps.append({"action": f"request {doc_type.value}", "reward": result.reward})
+                total_reward += result.reward  # type: ignore
+                steps.append({"action": f"request {doc_type.value}", "reward": result.reward})  # type: ignore
 
                 if result.observation.document_results and result.observation.document_results[-1].discrepancies and not done:
                     doc = result.observation.document_results[-1]
@@ -361,7 +345,7 @@ def main():
 
     # Fix Windows encoding
     if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore
 
     env = ITREnvironment()
     tasks = [args.task] if args.task else ["easy", "medium", "hard"]
@@ -373,21 +357,17 @@ def main():
     all_scores = {}
 
     for task_id in tasks:
-        print(f"\n{'-' * 50}")
-        print(f"  Task: {task_id.upper()}")
-        print(f"{'-' * 50}")
+        print(f"[START] {task_id}")
 
         if args.local:
             result = run_heuristic_agent(env, task_id)
         else:
-            result = run_gemini_agent(env, task_id)
+            result = run_openai_agent(env, task_id)
 
         score = result["final_score"]
         all_scores[task_id] = score
 
-        print(f"\n  Steps taken: {result['num_steps']}")
-        print(f"  Total reward: {result['total_reward']:.4f}")
-        print(f"  Final score:  {score:.4f}")
+        print(f"[END] {task_id} score={score:.4f}")
 
         # Print step-by-step
         print(f"\n  Step-by-step:")
